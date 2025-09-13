@@ -54,6 +54,8 @@ export class BattleScene extends Scene {
     }
 
     create() {
+    // Health regen timer
+    this.lastHealthRegen = 0;
         // Player health value text
         this.healthValueText = this.add.text(0, 0, '', {
             fontFamily: 'Arial', fontSize: 18, color: '#ff4444', stroke: '#000', strokeThickness: 2
@@ -141,6 +143,11 @@ export class BattleScene extends Scene {
         }
         this.handleWaveLogic();
         this.handlePlayerMovement();
+        // Call updatePlayerHealth only every second
+        if (time > this.lastHealthRegen + 1000) {
+            this.lastHealthRegen = time;
+            this.updatePlayerHealth();
+        }
         this.updateHealthBar();
         this.handleAutoAttack(time);
         this.handleEnemySpawn(time);
@@ -443,6 +450,18 @@ export class BattleScene extends Scene {
         }
     }
 
+    updatePlayerHealth() {
+        const multi = this.calculateMultiplier();
+        // console.log(multi);
+        if (!multi[CONSTANTS.multiplierTypes.lifeRegen]) {
+            return;
+        }
+
+        const regenAmount = (this.playerMaxHealth * multi[CONSTANTS.multiplierTypes.lifeRegen]);
+        console.log('Regen Amount:', regenAmount);
+        this.playerHealth = Math.min(this.playerHealth + regenAmount, this.playerMaxHealth);
+    }
+
     updateHealthBar() {
         
         if (!this.player || !this.healthBar || !this.healthBarBg) return;
@@ -491,6 +510,13 @@ export class BattleScene extends Scene {
                 },
                 {
                     regex: /(\d+?)% increased melee damage/g,
+                    handler: (match) => parseFloat(match[1]) / 100
+                }
+            ],
+            
+            [CONSTANTS.multiplierTypes.lifeRegen]: [
+                {
+                    regex: /regenerate (\d*\.?\d+)% of life per second/i,
                     handler: (match) => parseFloat(match[1]) / 100
                 }
             ]
