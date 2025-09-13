@@ -1,6 +1,6 @@
 {
-    "name": "template-react",
-    "description": "A Phaser 3 project template that demonstrates React communication and uses Vite for bundling.",
+    "name": "poe-survivor",
+    "description": "A Phaser 3 auto-battler game with React overlays, featuring class selection, skill tree with skill points, inventory/equipment, cone attacks, and enemy waves.",
     "version": "1.2.0",
     "type": "module",
     "repository": {
@@ -18,7 +18,16 @@
         "phaser",
         "phaser3",
         "react",
-        "vite"
+        "vite",
+        "auto-battler",
+        "skill tree",
+        "inventory",
+        "equipment",
+        "cone attack",
+        "enemy waves",
+        "drag and drop",
+        "game",
+        "javascript"
     ],
     "scripts": {
         "dev": "node log.js dev & vite --config vite/config.dev.mjs",

@@ -490,7 +490,7 @@ export class BattleScene extends Scene {
                     handler: (match) => parseFloat(match[1]) / 100
                 },
                 {
-                    regex: /(\d+?)% increased Attack Speed/g,
+                    regex: /(\d+?)% increased melee damage/g,
                     handler: (match) => parseFloat(match[1]) / 100
                 }
             ]
