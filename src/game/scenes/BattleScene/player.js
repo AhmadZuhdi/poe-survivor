@@ -30,6 +30,9 @@ export function handlePlayerMovement(scene) {
 
 export function characterStats(scene) {
     return {
+        baseHealth: 100 + ((scene.selectedClass?.base_str || 0) * 10),
+        baseMana: 50 + ((scene.selectedClass?.base_int || 0) * 5),
+
         basePhysDamage: 10 + ((scene.selectedClass?.base_str || 0) * 0.5),
         baseMagicDamage: 10 + ((scene.selectedClass?.base_int || 0) * 0.5),
         baseAttackSpeed: 1.0 + ((scene.selectedClass?.base_dex || 0) * 0.1)

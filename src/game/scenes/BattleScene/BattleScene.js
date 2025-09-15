@@ -2,9 +2,10 @@ import { Scene } from 'phaser';
 import { CharacterPanel } from '../../ui/CharacterPanel';
 import { SkillTreePanel } from '../../ui/SkillTreePanel';
 import { InventoryPanel } from '../../ui/InventoryPanel';
+import { SkillPanel } from '../../ui/SkillPanel';
 import { setupCollisions } from './collision';
 import { CONSTANTS } from '../../class/constants';
-import { updatePlayerHealth, updateHealthBar } from './health';
+import { updatePlayerHealth, updateHealthBar, updatePlayerMana, updateManaBar } from './health';
 import { handlePlayerMovement, characterStats } from './player';
 import { handleEnemySpawn, updateEnemyVelocity, handleEnemyDeath } from './enemy';
 import { handleWaveLogic, handleBossSpawn } from './wave';
@@ -25,9 +26,11 @@ export class BattleScene extends Scene {
         // Configurable properties (responsive)
         this.enemyCount = 8;
         this.enemySpeed = 100;
-        // Player health
-        this.playerMaxHealth = 100;
+        // Player health and mana will be initialized in create() based on selected class
+        this.playerMaxHealth = 100; // Default, will be updated
         this.playerHealth = this.playerMaxHealth;
+        this.playerMaxMana = 50; // Default, will be updated  
+        this.playerMana = this.playerMaxMana;
         // Store CONSTANTS for module access
         this.CONSTANTS = CONSTANTS;
     }
@@ -62,6 +65,10 @@ export class BattleScene extends Scene {
         this.healthValueText = this.add.text(0, 0, '', {
             fontFamily: 'Arial', fontSize: 18, color: '#ff4444', stroke: '#000', strokeThickness: 2
         }).setDepth(12);
+        // Player mana value text
+        this.manaValueText = this.add.text(0, 0, '', {
+            fontFamily: 'Arial', fontSize: 18, color: '#4444ff', stroke: '#000', strokeThickness: 2
+        }).setDepth(12);
         // Get selected class from scene data
         this.selectedClass = this.sys.settings.data?.selectedClass || null;
         // Hide game UI until class is selected
@@ -77,6 +84,8 @@ export class BattleScene extends Scene {
         this.inventoryPanel = new InventoryPanel(this, (visible) => {
             this.isPaused = visible;
         });
+        // Skill panel (shows active and available skills)
+        this.skillPanel = new SkillPanel(this);
         // Add selected weapon to inventory if provided
         this.inventory = [];
         if (this.sys.settings.data?.selectedWeapon) {
@@ -89,6 +98,7 @@ export class BattleScene extends Scene {
         this.keyPanel = this.input.keyboard.addKey('C');
         this.keySkillTree = this.input.keyboard.addKey('T');
         this.keyInventory = this.input.keyboard.addKey('I');
+        this.keySkills = this.input.keyboard.addKey('K');
         // Game pause state
         this.isPaused = false;
         // Wave text display
@@ -99,6 +109,10 @@ export class BattleScene extends Scene {
         this.levelText = this.add.text(20, 20, 'Level: 1 | EXP: 0/5', {
             fontFamily: 'Arial', fontSize: 24, color: '#ffff00', stroke: '#000', strokeThickness: 3
         }).setDepth(100);
+        // Controls instructions
+        this.controlsText = this.add.text(this.scale.width - 20, 20, 'C: Character | T: Skills Tree | I: Inventory | K: Skills', {
+            fontFamily: 'Arial', fontSize: 16, color: '#ffffff', stroke: '#000', strokeThickness: 2
+        }).setOrigin(1, 0).setDepth(100);
         // Enable cursor input for player movement
         this.cursors = this.input.keyboard.createCursorKeys();
         // Responsive screen dimensions
@@ -114,12 +128,26 @@ export class BattleScene extends Scene {
         this.enemies = this.physics.add.group({ classType: Phaser.Physics.Arcade.Sprite });
         this.projectiles = this.physics.add.group({ classType: Phaser.Physics.Arcade.Sprite });
 
+        // Initialize player stats from character stats
+        const stats = characterStats(this);
+        this.playerMaxHealth = stats.baseHealth;
+        this.playerHealth = this.playerMaxHealth;
+        this.playerMaxMana = stats.baseMana;
+        this.playerMana = this.playerMaxMana;
+
         // Health bar graphics (create after player)
         this.healthBarBg = this.add.graphics();
         this.healthBarBg.setDepth(10);
         this.healthBar = this.add.graphics();
         this.healthBar.setDepth(11);
         updateHealthBar(this);
+
+        // Mana bar graphics
+        this.manaBarBg = this.add.graphics();
+        this.manaBarBg.setDepth(10);
+        this.manaBar = this.add.graphics();
+        this.manaBar.setDepth(11);
+        updateManaBar(this);
 
         // Setup collision logic
         setupCollisions(this);
@@ -164,8 +192,10 @@ export class BattleScene extends Scene {
         if (time > this.lastHealthRegen + 1000) {
             this.lastHealthRegen = time;
             updatePlayerHealth(this);
+            updatePlayerMana(this);
         }
         updateHealthBar(this);
+        updateManaBar(this);
         this.handleAutoAttack(time);
         handleEnemySpawn(this, time);
         handleBossSpawn(this);
@@ -197,10 +227,14 @@ export class BattleScene extends Scene {
             this.inventoryPanel.toggle();
             // Inventory panel does not pause the game by default
         }
+        if (Phaser.Input.Keyboard.JustDown(this.keySkills)) {
+            this.skillPanel.setVisible(!this.skillPanel.visible);
+            this.checkIsPaused();
+        }
     }
 
     checkIsPaused() {
-        this.isPaused = this.charPanel.visible || this.skillTreePanel.visible;
+        this.isPaused = this.charPanel.visible || this.skillTreePanel.visible || this.skillPanel.visible;
     }
 
     handlePanelStatsUpdate() {
@@ -448,7 +482,9 @@ export class BattleScene extends Scene {
         // Get multiplier from skill tree
         const multipliers = this.calculateMultiplier();
         let totalMultiplier = 1;
-        if (damageType === CONSTANTS.damageTypes.physical && multipliers[CONSTANTS.damageTypes.physical]) {
+
+        const isWeaponPhys = damageType === CONSTANTS.damageTypes.physical;
+        if (isWeaponPhys && multipliers[CONSTANTS.damageTypes.physical]) {
             totalMultiplier += multipliers[CONSTANTS.damageTypes.physical];
         }
 
@@ -458,6 +494,10 @@ export class BattleScene extends Scene {
 
         if (weapon.oneHanded === false && multipliers[CONSTANTS.weaponSubTypes.twoHanded]) {
             totalMultiplier += multipliers[CONSTANTS.weaponSubTypes.twoHanded];
+        }
+
+        if (weapon.oneHanded === false && isWeaponPhys && multipliers[`${CONSTANTS.damageTypes.physical}-${CONSTANTS.weaponSubTypes.twoHanded}`]) {
+            totalMultiplier += multipliers[`${CONSTANTS.damageTypes.physical}-${CONSTANTS.weaponSubTypes.twoHanded}`];
         }
 
         // You can add more multiplier types here if needed

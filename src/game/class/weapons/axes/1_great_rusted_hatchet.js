@@ -9,7 +9,7 @@ export class GreatRustedHatchet extends Weapon {
             endDamage: 15,
             attackSpeed: 1.0,
             damageType: CONSTANTS.damageTypes.physical,
-            range: 1,
+            range: 2,
             type: CONSTANTS.weaponTypes.axes,
             oneHanded: false,
             critChance: 0.05,
