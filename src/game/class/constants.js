@@ -4,6 +4,11 @@ export const CONSTANTS = {
         magical: 'magical',
     },
 
+    weaponRanges: {
+        melee: 'melee',
+        ranged: 'ranged',
+    },
+
     weaponTypes: {
         axes: 'axes',
         swords: 'swords',
@@ -15,6 +20,10 @@ export const CONSTANTS = {
         sceptres: 'sceptres',
     },
 
+    weaponSubTypes: {
+        oneHanded: 'oneHanded',
+        twoHanded: 'twoHanded',
+    },
 
     multiplierTypes: {
         health: 'health',

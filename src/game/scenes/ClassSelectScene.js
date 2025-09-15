@@ -2,12 +2,18 @@ import { Scene } from 'phaser';
 import { ClassSelectPanel } from '../ui/ClassSelectPanel';
 import {Axes} from './../class/weapons/axes/axes.js'
 import {Sceptres} from './../class/weapons/sceptres/screptres.js'
+import {Bows} from './../class/weapons/bows/bows.js'
 
 export class ClassSelectScene extends Scene {
     constructor() {
         super('ClassSelectScene');
 
-        this.startingWeapons = [Axes.RustedHatchet, Sceptres.DriftwoodSceptre];
+        this.startingWeapons = [
+            Axes.RustedHatchet,
+            Axes.GreatRustedHatchet,
+            Bows.BasicBow,
+            Sceptres.DriftwoodSceptre
+        ];
     }
 
     create() {

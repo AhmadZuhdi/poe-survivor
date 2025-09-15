@@ -1,33 +1,35 @@
 import { Scene } from 'phaser';
-import { CharacterPanel } from '../ui/CharacterPanel';
-import { SkillTreePanel } from '../ui/SkillTreePanel';
-import { InventoryPanel } from '../ui/InventoryPanel';
+import { CharacterPanel } from '../../ui/CharacterPanel';
+import { SkillTreePanel } from '../../ui/SkillTreePanel';
+import { InventoryPanel } from '../../ui/InventoryPanel';
 import { setupCollisions } from './collision';
-import { CONSTANTS } from '../class/constants';
+import { CONSTANTS } from '../../class/constants';
+import { updatePlayerHealth, updateHealthBar } from './health';
+import { handlePlayerMovement, characterStats } from './player';
+import { handleEnemySpawn, updateEnemyVelocity, handleEnemyDeath } from './enemy';
+import { handleWaveLogic, handleBossSpawn } from './wave';
 
 export class BattleScene extends Scene {
     constructor() {
-    // Wave system
-    super('BattleScene');    
-    this.wave = 1;
-    this.waveEnemies = 0;
-    this.waveBossSpawned = false;
-    // Player level and kill count
-    this.playerLevel = 1;
-    this.playerKills = 0;
-    this.playerExp = 0;
-    this.playerExpToLevel = 5;
-    this.baseExp = 5;
-    // Configurable properties (responsive)
-    this.enemyCount = 8;
-    this.enemySpeed = 100;
-    // Player health
-    this.playerMaxHealth = 100;
-    this.playerHealth = this.playerMaxHealth;
-    // Wave system
-    this.wave = 1;
-    this.waveEnemies = 0;
-    this.waveBossSpawned = false;
+        super('BattleScene');
+        // Wave system
+        this.wave = 1;
+        this.waveEnemies = 0;
+        this.waveBossSpawned = false;
+        // Player level and kill count
+        this.playerLevel = 1;
+        this.playerKills = 0;
+        this.playerExp = 0;
+        this.playerExpToLevel = 5;
+        this.baseExp = 5;
+        // Configurable properties (responsive)
+        this.enemyCount = 8;
+        this.enemySpeed = 100;
+        // Player health
+        this.playerMaxHealth = 100;
+        this.playerHealth = this.playerMaxHealth;
+        // Store CONSTANTS for module access
+        this.CONSTANTS = CONSTANTS;
     }
 
     preload() {
@@ -54,23 +56,23 @@ export class BattleScene extends Scene {
     }
 
     create() {
-    // Health regen timer
-    this.lastHealthRegen = 0;
+        // Health regen timer
+        this.lastHealthRegen = 0;
         // Player health value text
         this.healthValueText = this.add.text(0, 0, '', {
             fontFamily: 'Arial', fontSize: 18, color: '#ff4444', stroke: '#000', strokeThickness: 2
         }).setDepth(12);
-    // Get selected class from scene data
-    this.selectedClass = this.sys.settings.data?.selectedClass || null;
-    // Hide game UI until class is selected
-    this.gameStarted = true;
-    // Character panel (fullscreen)
-    this.charPanel = new CharacterPanel(this);
-    // Skill tree panel (draggable)
-    this.skillTreePanel = new SkillTreePanel(this);
-    // Skill points: 1 per level
-    this.skillPoints = this.playerLevel;
-    this.skillTreePanel.updateSkillPoints(this.skillPoints);
+        // Get selected class from scene data
+        this.selectedClass = this.sys.settings.data?.selectedClass || null;
+        // Hide game UI until class is selected
+        this.gameStarted = true;
+        // Character panel (fullscreen)
+        this.charPanel = new CharacterPanel(this);
+        // Skill tree panel (draggable)
+        this.skillTreePanel = new SkillTreePanel(this);
+        // Skill points: 1 per level
+        this.skillPoints = this.playerLevel;
+        this.skillTreePanel.updateSkillPoints(this.skillPoints);
         // Inventory panel (fullscreen, pauses game when open)
         this.inventoryPanel = new InventoryPanel(this, (visible) => {
             this.isPaused = visible;
@@ -86,7 +88,7 @@ export class BattleScene extends Scene {
         // Toggle panels with keys
         this.keyPanel = this.input.keyboard.addKey('C');
         this.keySkillTree = this.input.keyboard.addKey('T');
-    this.keyInventory = this.input.keyboard.addKey('I');
+        this.keyInventory = this.input.keyboard.addKey('I');
         // Game pause state
         this.isPaused = false;
         // Wave text display
@@ -97,8 +99,8 @@ export class BattleScene extends Scene {
         this.levelText = this.add.text(20, 20, 'Level: 1 | EXP: 0/5', {
             fontFamily: 'Arial', fontSize: 24, color: '#ffff00', stroke: '#000', strokeThickness: 3
         }).setDepth(100);
-    // Enable cursor input for player movement
-    this.cursors = this.input.keyboard.createCursorKeys();
+        // Enable cursor input for player movement
+        this.cursors = this.input.keyboard.createCursorKeys();
         // Responsive screen dimensions
         const centerX = this.scale.width / 2;
         const centerY = this.scale.height / 2;
@@ -108,19 +110,34 @@ export class BattleScene extends Scene {
         // Basic background
         this.add.rectangle(centerX, centerY, this.scale.width, this.scale.height, 0x222244);
         // Center player in the middle of the screen (responsive)
-    this.player = this.physics.add.sprite(centerX, centerY, 'player');
-    this.enemies = this.physics.add.group({ classType: Phaser.Physics.Arcade.Sprite });
-    this.projectiles = this.physics.add.group({ classType: Phaser.Physics.Arcade.Sprite });
+        this.player = this.physics.add.sprite(centerX, centerY, 'player');
+        this.enemies = this.physics.add.group({ classType: Phaser.Physics.Arcade.Sprite });
+        this.projectiles = this.physics.add.group({ classType: Phaser.Physics.Arcade.Sprite });
 
-    // Health bar graphics (create after player)
-    this.healthBarBg = this.add.graphics();
-    this.healthBarBg.setDepth(10);
-    this.healthBar = this.add.graphics();
-    this.healthBar.setDepth(11);
-    this.updateHealthBar();
+        // Health bar graphics (create after player)
+        this.healthBarBg = this.add.graphics();
+        this.healthBarBg.setDepth(10);
+        this.healthBar = this.add.graphics();
+        this.healthBar.setDepth(11);
+        updateHealthBar(this);
 
         // Setup collision logic
         setupCollisions(this);
+
+        // Setup enemy projectile collisions (will be called when enemyProjectiles group is created)
+        this.setupEnemyProjectileCollisions = () => {
+            if (this.enemyProjectiles) {
+                console.log('Setting up enemy projectile collisions');
+                this.physics.add.overlap(this.player, this.enemyProjectiles, (player, projectile) => {
+                    if (this.playerHealth > 0) {
+                        const damage = projectile.getData('damage') || 15;
+                        console.log('Enemy projectile hit player for damage:', damage);
+                        this.playerHealth = Math.max(0, this.playerHealth - damage);
+                        projectile.destroy();
+                    }
+                });
+            }
+        };
 
         // Timers for auto-attack and enemy spawn
         this.nextAttack = 0;
@@ -141,18 +158,18 @@ export class BattleScene extends Scene {
             this.pauseGameObjects();
             return;
         }
-        this.handleWaveLogic();
-        this.handlePlayerMovement();
+        handleWaveLogic(this);
+        handlePlayerMovement(this);
         // Call updatePlayerHealth only every second
         if (time > this.lastHealthRegen + 1000) {
             this.lastHealthRegen = time;
-            this.updatePlayerHealth();
+            updatePlayerHealth(this);
         }
-        this.updateHealthBar();
+        updateHealthBar(this);
         this.handleAutoAttack(time);
-        this.handleEnemySpawn(time);
-        this.handleBossSpawn();
-        this.updateEnemyVelocity();
+        handleEnemySpawn(this, time);
+        handleBossSpawn(this);
+        updateEnemyVelocity(this);
         this.cleanupProjectilesAndEnemies();
         this.handleGameOver();
     }
@@ -168,18 +185,22 @@ export class BattleScene extends Scene {
                 maxHealth: this.playerMaxHealth,
                 selectedClass: this.selectedClass
             });
-            this.isPaused = this.charPanel.visible || this.skillTreePanel.visible;
+            this.checkIsPaused();
         }
         if (Phaser.Input.Keyboard.JustDown(this.keySkillTree)) {
             this.skillTreePanel.toggle();
             // Always update skill points before opening
             this.skillTreePanel.updateSkillPoints(this.skillPoints);
-            this.isPaused = this.charPanel.visible || this.skillTreePanel.visible;
+            this.checkIsPaused();
         }
         if (Phaser.Input.Keyboard.JustDown(this.keyInventory)) {
             this.inventoryPanel.toggle();
             // Inventory panel does not pause the game by default
         }
+    }
+
+    checkIsPaused() {
+        this.isPaused = this.charPanel.visible || this.skillTreePanel.visible;
     }
 
     handlePanelStatsUpdate() {
@@ -201,44 +222,6 @@ export class BattleScene extends Scene {
         this.enemies.children.each((enemy) => {
             if (enemy.body) enemy.body.setVelocity(0, 0);
         });
-    }
-
-    handleWaveLogic() {
-        if (this.waveEnemies <= 0 && this.enemies.countActive(true) === 0) {
-            this.wave++;
-            this.waveText.setText('Wave: ' + this.wave);
-            this.waveBossSpawned = false;
-            this.waveEnemies = 5 + Math.floor(this.wave * 2.5);
-            this.enemyInterval = Math.max(1000 - (this.wave * 40), 200);
-        }
-    }
-
-    handlePlayerMovement() {
-        const speed = 300;
-        let vx = 0, vy = 0;
-        if (this.cursors.left.isDown) {
-            vx = -speed;
-        } else if (this.cursors.right.isDown) {
-            vx = speed;
-        }
-        if (this.cursors.up.isDown) {
-            vy = -speed;
-        } else if (this.cursors.down.isDown) {
-            vy = speed;
-        }
-        this.player.body.setVelocity(vx, vy);
-        if (vx !== 0 && vy !== 0) {
-            this.player.body.velocity.normalize().scale(speed);
-        }
-    // Clamp player position within screen bounds
-    const halfWidth = this.player.displayWidth / 2;
-    const halfHeight = this.player.displayHeight / 2;
-    const minX = halfWidth;
-    const maxX = this.scale.width - halfWidth;
-    const minY = halfHeight;
-    const maxY = this.scale.height - halfHeight;
-    this.player.x = Phaser.Math.Clamp(this.player.x, minX, maxX);
-    this.player.y = Phaser.Math.Clamp(this.player.y, minY, maxY);
     }
 
     handleAutoAttack(time) {
@@ -337,87 +320,6 @@ export class BattleScene extends Scene {
             }
         }
     }
-    // Handle enemy death (reusable)
-    handleEnemyDeath(enemy) {
-        if (!enemy || !enemy.active) return;
-        enemy.setActive(false);
-        enemy.setVisible(false);
-        enemy.destroy();
-        // You can add more logic here (e.g., drop loot, play animation, increment kill count)
-        this.playerKills = (this.playerKills || 0) + 1;
-        this.playerExp++;
-        let leveledUp = false;
-        if (this.playerExp >= this.playerExpToLevel) {
-            this.playerLevel++;
-            this.playerExp = 0;
-            this.playerExpToLevel = this.baseExp * this.playerLevel;
-            // Gain 1 skill point per level
-            this.skillPoints++;
-            leveledUp = true;
-        }
-        this.levelText.setText('Level: ' + this.playerLevel + ' | EXP: ' + this.playerExp + '/' + this.playerExpToLevel);
-        // Always update skill points after level up
-        if (leveledUp) {
-            this.skillTreePanel.updateSkillPoints(this.skillPoints);
-        }
-    }
-
-    handleEnemySpawn(time) {
-        if (this.waveEnemies > 0 && time > this.lastEnemy + this.enemyInterval) {
-            this.lastEnemy = time;
-            const w = this.scale.width;
-            const h = this.scale.height;
-            let x, y;
-            const edge = Phaser.Math.Between(0, 3);
-            if (edge === 0) { x = Phaser.Math.Between(0, w); y = 0; }
-            else if (edge === 1) { x = w; y = Phaser.Math.Between(0, h); }
-            else if (edge === 2) { x = Phaser.Math.Between(0, w); y = h; }
-            else { x = 0; y = Phaser.Math.Between(0, h); }
-            const enemy = this.enemies.get(x, y, 'enemy');
-            if (enemy) {
-                enemy.setActive(true).setVisible(true);
-                enemy.setData('health', 30);
-                this.waveEnemies--;
-            }
-        }
-    }
-
-    handleBossSpawn() {
-        const isBossWave = this.wave % 10 === 0;
-        if (isBossWave && !this.waveBossSpawned && this.enemies.countActive(true) === 0) {
-            this.waveBossSpawned = true;
-            const w = this.scale.width;
-            const h = this.scale.height;
-            let x, y;
-            const edge = Phaser.Math.Between(0, 3);
-            if (edge === 0) { x = Phaser.Math.Between(0, w); y = 0; }
-            else if (edge === 1) { x = w; y = Phaser.Math.Between(0, h); }
-            else if (edge === 2) { x = Phaser.Math.Between(0, w); y = h; }
-            else { x = 0; y = Phaser.Math.Between(0, h); }
-            const boss = this.enemies.get(x, y, 'enemy');
-            if (boss) {
-                boss.setActive(true).setVisible(true);
-                boss.setData('health', 300 + this.wave * 20);
-                boss.setScale(2);
-                boss.setTint(0xff00ff);
-                boss.setData('isBoss', true);
-            }
-        }
-    }
-
-    updateEnemyVelocity() {
-        this.enemies.children.each((enemy) => {
-            if (!enemy.active) return;
-            const dx = this.player.x - enemy.x;
-            const dy = this.player.y - enemy.y;
-            const dist = Math.sqrt(dx * dx + dy * dy);
-            if (dist > 0) {
-                const vx = (dx / dist) * this.enemySpeed;
-                const vy = (dy / dist) * this.enemySpeed;
-                enemy.body.setVelocity(vx, vy);
-            }
-        });
-    }
 
     cleanupProjectilesAndEnemies() {
         this.projectiles.children.each((proj) => {
@@ -426,6 +328,15 @@ export class BattleScene extends Scene {
         this.enemies.children.each((enemy) => {
             if (enemy.x < -50 || enemy.x > this.scale.width + 50 || enemy.y < -50 || enemy.y > this.scale.height + 50) enemy.destroy();
         });
+        
+        // Cleanup enemy projectiles
+        if (this.enemyProjectiles) {
+            this.enemyProjectiles.children.each((proj) => {
+                if (proj.x < -50 || proj.x > this.scale.width + 50 || proj.y < -50 || proj.y > this.scale.height + 50) {
+                    proj.destroy();
+                }
+            });
+        }
     }
 
     handleGameOver() {
@@ -434,7 +345,6 @@ export class BattleScene extends Scene {
         }
     }
 
-    // Draw/update health bar
     // Apply damage to enemy and handle death/crit
     applyDamageToEnemy(enemy) {
         if (!enemy || !enemy.active) return;
@@ -446,55 +356,7 @@ export class BattleScene extends Scene {
             enemy.setTint(0xffff00);
         }
         if (enemyHealth <= 0) {
-            this.handleEnemyDeath(enemy);
-        }
-    }
-
-    updatePlayerHealth() {
-        const multi = this.calculateMultiplier();
-        // console.log(multi);
-        if (!multi[CONSTANTS.multiplierTypes.lifeRegen]) {
-            return;
-        }
-
-        const regenAmount = (this.playerMaxHealth * multi[CONSTANTS.multiplierTypes.lifeRegen]);
-        console.log('Regen Amount:', regenAmount);
-        this.playerHealth = Math.min(this.playerHealth + regenAmount, this.playerMaxHealth);
-    }
-
-    updateHealthBar() {
-        
-        if (!this.player || !this.healthBar || !this.healthBarBg) return;
-
-        const barWidth = 120;
-        const barHeight = 16;
-        const x = this.player.x - barWidth / 2;
-        const y = this.player.y + 40;
-        this.healthBarBg.clear();
-        this.healthBarBg.fillStyle(0x222222, 1);
-        this.healthBarBg.fillRect(x, y, barWidth, barHeight);
-        this.healthBar.clear();
-        // Health color: green to red
-        const healthRatio = Math.max(this.playerHealth / this.playerMaxHealth, 0);
-        const color = Phaser.Display.Color.Interpolate.ColorWithColor(
-            new Phaser.Display.Color(255, 0, 0),
-            new Phaser.Display.Color(0, 255, 0),
-            100,
-            healthRatio * 100
-        );
-        const barColor = Phaser.Display.Color.GetColor(color.r, color.g, color.b);
-        this.healthBar.fillStyle(barColor, 1);
-        this.healthBar.fillRect(x + 2, y + 2, (barWidth - 4) * healthRatio, barHeight - 4);
-        // Show health value above bar
-        this.healthValueText.setText(`HP: ${this.playerHealth} / ${this.playerMaxHealth}`);
-        this.healthValueText.setPosition(x + barWidth / 2 - this.healthValueText.width / 2, y - 22);
-    }
-
-    characterStats() {
-        return {
-            basePhysDamage: 10 + ((this.selectedClass?.base_str || 0) * 0.5),
-            baseMagicDamage: 10 + ((this.selectedClass?.base_int || 0) * 0.5),
-            baseAttackSpeed: 1.0 + ((this.selectedClass?.base_dex || 0) * 0.1)
+            handleEnemyDeath(this, enemy);
         }
     }
 
@@ -503,13 +365,31 @@ export class BattleScene extends Scene {
         let multiplier = {};
 
         const skillMultipliers = {
+
+            [CONSTANTS.weaponRanges.melee]: [
+                {
+                    regex: /(\d+?)% increased melee damage/g,
+                    handler: (match) => parseFloat(match[1]) / 100
+                }
+            ],
+
+            [`${CONSTANTS.damageTypes.physical}-${CONSTANTS.weaponSubTypes.twoHanded}`]: [
+                {
+                    regex: /(\d+?)% increased physical Damage with two handed melee weapons/g,
+                    handler: (match) => parseFloat(match[1]) / 100
+                }
+            ],
+
+            [CONSTANTS.weaponSubTypes.twoHanded]: [
+                {
+                    regex: /(\d+?)% increased damage with two handed Weapons/g,
+                    handler: (match) => parseFloat(match[1]) / 100
+                },
+            ],
+
             [CONSTANTS.damageTypes.physical]: [
                 {
                     regex: /(\d+?)% increased attack physical damage/g,
-                    handler: (match) => parseFloat(match[1]) / 100
-                },
-                {
-                    regex: /(\d+?)% increased melee damage/g,
                     handler: (match) => parseFloat(match[1]) / 100
                 }
             ],
@@ -545,12 +425,12 @@ export class BattleScene extends Scene {
         // TODO: implement unarmed damage if no weapon
         if (!weapon) {
             // No weapon equipped, use base physical damage
-            const stats = this.characterStats();
+            const stats = characterStats(this);
             return { damage: stats.basePhysDamage, isCrit: false };
         }
 
         // Get base damage type
-        const stats = this.characterStats();
+        const stats = characterStats(this);
         let baseDamage = 0;
         let damageType = weapon.damageType || CONSTANTS.damageTypes.physical;
         if (damageType === CONSTANTS.damageTypes.physical) {
@@ -571,6 +451,15 @@ export class BattleScene extends Scene {
         if (damageType === CONSTANTS.damageTypes.physical && multipliers[CONSTANTS.damageTypes.physical]) {
             totalMultiplier += multipliers[CONSTANTS.damageTypes.physical];
         }
+
+        if (weapon.range === CONSTANTS.weaponRanges.melee && multipliers[CONSTANTS.weaponRanges.melee]) {
+            totalMultiplier += multipliers[CONSTANTS.weaponRanges.melee];
+        }
+
+        if (weapon.oneHanded === false && multipliers[CONSTANTS.weaponSubTypes.twoHanded]) {
+            totalMultiplier += multipliers[CONSTANTS.weaponSubTypes.twoHanded];
+        }
+
         // You can add more multiplier types here if needed
 
         // Check for critical hit using weapon class
